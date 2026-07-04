@@ -184,7 +184,18 @@ def _params_snapshot_for_print(
 
 
 def _params_snapshot_for_spec(spec: BundleSpec, in_entry, out_entry) -> dict:
-    """Build ``{<print_profile>: <snapshot>}`` for every print in ``spec``."""
+    """Build ``{<print_profile>: <snapshot>}`` for every print in ``spec``.
+
+    Reversal films carry no print stage (``spec.print_profiles is None``);
+    the snapshot is keyed by the film profile itself in that case, since
+    it's the only stock that ran through the pipeline.
+    """
+    if spec.print_profiles is None:
+        return {
+            spec.film_profile: _params_snapshot_for_print(
+                spec, in_entry, out_entry, None
+            )
+        }
     return {
         print_stock: _params_snapshot_for_print(spec, in_entry, out_entry, print_stock)
         for print_stock in spec.print_profiles
