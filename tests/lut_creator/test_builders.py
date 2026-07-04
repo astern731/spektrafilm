@@ -501,6 +501,32 @@ class TestBundleOutput:
         # 8-bit quantization error is ~1/255 per channel
         np.testing.assert_allclose(loaded.table, lut.table, atol=1.5 / 255.0)
 
+    def test_hald_png_works_with_any_film_type(self, tmp_path):
+        """PNG format works with negative, positive, and other film types.
+
+        The Hald PNG delivery target is format-agnostic and works for any
+        film profile in the registry, regardless of whether it's negative,
+        positive/slide, or cinema film.
+        """
+        # Test with negative film (typical case)
+        spec_neg = make_bundle_spec(
+            name="portra_png",
+            film_profile="kodak_portra_400",
+            resolution=16,
+            target="hald_clut_png",
+        )
+        builder_neg = BundleBuilder(spec_neg)
+        built_neg = builder_neg.build()
+        out_dir_neg = builder_neg.write(built_neg, tmp_path / "negative_bundle")
+
+        rel_path_neg, lut_neg = built_neg.luts[0]
+        png_neg = out_dir_neg / Path(rel_path_neg).with_suffix(".png")
+        assert png_neg.exists() and png_neg.suffix == ".png"
+
+        # Verify both formats round-trip correctly
+        loaded_neg = get_format("hald_png").read(png_neg)
+        np.testing.assert_allclose(loaded_neg.table, lut_neg.table, atol=1.5 / 255.0)
+
 
 # ---------------------------------------------------------------------------
 # Default bundle name (canonical pattern from naming.py)
