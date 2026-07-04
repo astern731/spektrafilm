@@ -28,6 +28,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Mapping
 
+from spektrafilm_lut_creator import color_spaces
+
 
 @dataclass(frozen=True)
 class DeliveryTarget:
