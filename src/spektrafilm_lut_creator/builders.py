@@ -102,7 +102,7 @@ def _is_reversal_film(film_profile_name: str) -> bool:
     scanned directly without a printing stage; negative films go through print.
     """
     from spektrafilm.profiles import io as profiles_io
-    profile = profiles_io.load_film_profile(film_profile_name)
+    profile = profiles_io.load_profile(film_profile_name)
     return profile.info.type == "positive"
 
 

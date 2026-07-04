@@ -217,7 +217,7 @@ class BundleSpec:
             )
         # Determine if this is a reversal (positive) film to validate print_profiles
         from spektrafilm.profiles import io as profiles_io
-        film_profile = profiles_io.load_film_profile(self.film_profile)
+        film_profile = profiles_io.load_profile(self.film_profile)
         is_reversal = film_profile.info.type == "positive"
 
         if is_reversal:

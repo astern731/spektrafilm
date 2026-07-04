@@ -199,7 +199,7 @@ def _make_spec(fields: dict) -> BundleSpec:
 
     # Check if this is a reversal film to determine if --print is required
     from spektrafilm.profiles import io as profiles_io
-    film_profile = profiles_io.load_film_profile(fields["film_profile"])
+    film_profile = profiles_io.load_profile(fields["film_profile"])
     is_reversal = film_profile.info.type == "positive"
 
     if is_reversal:
