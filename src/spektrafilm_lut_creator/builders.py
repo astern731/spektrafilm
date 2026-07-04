@@ -1166,7 +1166,10 @@ class BundleBuilder:
             target = get_target(self.spec.target)
             fmt = get_format(target.format)
             for rel_path, lut in bundle.luts:
-                full_path = out_dir / rel_path
+                # Replace extension with the format's primary extension
+                path_obj = Path(rel_path)
+                new_path = path_obj.with_suffix(fmt.extensions[0])
+                full_path = out_dir / new_path
                 full_path.parent.mkdir(parents=True, exist_ok=True)
                 fmt.write(lut, full_path, **target.writer_kwargs)
         else:

@@ -130,3 +130,28 @@ register(DeliveryTarget(
         "each is verified on a real camera."
     ),
 ))
+
+register(DeliveryTarget(
+    name="hald_clut_png",
+    description=(
+        "Standard Hald-CLUT PNG (Level 8: 64×64 grid, 262,144 pixels). "
+        "Portable format compatible with Photoshop Color Lookup, OBS, "
+        "ImageMagick, and other color-grading software. Output is sRGB-encoded."
+    ),
+    format="hald_png",
+    valid_inputs=tuple(color_spaces.list_input_spaces()),
+    valid_outputs=tuple(color_spaces.list_output_spaces()),
+    recommended_resolution=64,
+    writer_kwargs={},
+    cameras=(),
+    verified=(
+        "Hald CLUT is a standard format (Sasaki, 2007) with wide "
+        "software support. 64×64 (Level 8) is the de-facto standard "
+        "resolution for consumer workflows."
+    ),
+    notes=(
+        "Resolution must be a perfect square (16, 25, 36, 49, 64, 81, …). "
+        "Use --resolution 64 for Level 8 (standard), 36 for Level 6, or 16 "
+        "for Level 4. LUT values are quantized to 8-bit per channel (~0.4% error)."
+    ),
+))

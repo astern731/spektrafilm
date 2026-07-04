@@ -478,6 +478,29 @@ class TestBundleOutput:
                 break
             assert line.startswith("#") or line == "", f"non-comment header line: {line!r}"
 
+    def test_hald_clut_png_delivery_target_writes_png(self, tmp_path):
+        """Delivery target with hald_clut_png format writes .png files."""
+        spec = make_bundle_spec(
+            name="hald_test",
+            resolution=16,  # 16 is a perfect square (level 4)
+            target="hald_clut_png",
+        )
+        builder = BundleBuilder(spec)
+        built = builder.build()
+        out_dir = builder.write(built, tmp_path / "hald_bundle")
+
+        # PNG files should exist instead of .cube files
+        rel_path, lut = built.luts[0]
+        png_path = out_dir / Path(rel_path).with_suffix(".png")
+        assert png_path.exists(), f"PNG file not found: {png_path}"
+        assert png_path.suffix == ".png"
+
+        # PNG should round-trip through hald_png format
+        loaded = get_format("hald_png").read(png_path)
+        assert loaded.table.shape == lut.table.shape
+        # 8-bit quantization error is ~1/255 per channel
+        np.testing.assert_allclose(loaded.table, lut.table, atol=1.5 / 255.0)
+
 
 # ---------------------------------------------------------------------------
 # Default bundle name (canonical pattern from naming.py)
