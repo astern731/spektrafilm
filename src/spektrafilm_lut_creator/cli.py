@@ -81,7 +81,11 @@ def _build_parser() -> argparse.ArgumentParser:
     build.add_argument("--film", help="Film profile slug, e.g. kodak_portra_400.")
     build.add_argument(
         "--print", dest="prints", action="append", metavar="PRINT",
-        help="Print profile slug. Repeat for multi-print bundles.",
+        help=(
+            "Print profile slug. Repeat for multi-print bundles. "
+            "Required for negative films, omit for reversal/slide films "
+            "(Kodachrome, Velvia, Provia, etc)."
+        ),
     )
     build.add_argument(
         "--input", dest="input_cs",
@@ -185,17 +189,38 @@ def _make_spec(fields: dict) -> BundleSpec:
     Required fields are validated by the dataclass itself; we only handle
     the type-conversion concerns the CLI introduces (slug → canonical
     name, TOML tables → dataclass instances).
+
+    For reversal (positive/slide) films, --print is optional since they
+    are scanned directly without a printing stage. For negative films,
+    --print is required.
     """
     if "film_profile" not in fields:
         raise ValueError("missing --film (or `film_profile` in TOML).")
-    if "print_profiles" not in fields or not fields["print_profiles"]:
-        raise ValueError("missing --print (or `print_profiles` in TOML).")
+
+    # Check if this is a reversal film to determine if --print is required
+    from spektrafilm.profiles import io as profiles_io
+    film_profile = profiles_io.load_film_profile(fields["film_profile"])
+    is_reversal = film_profile.info.type == "positive"
+
+    if is_reversal:
+        # Reversal films don't use print profiles
+        fields["print_profiles"] = None
+    else:
+        # Negative films require print profiles
+        if "print_profiles" not in fields or not fields["print_profiles"]:
+            raise ValueError(
+                f"Negative film {fields['film_profile']!r} requires --print. "
+                f"Pass one or more print stock names (e.g. --print kodak_portra_endura), "
+                f"or use a reversal film (Kodachrome, Velvia, Provia, etc) to skip printing."
+            )
+
     if "input_color_space" not in fields:
         raise ValueError("missing --input (or `input_color_space` in TOML).")
     if "output_color_space" not in fields:
         raise ValueError("missing --output (or `output_color_space` in TOML).")
 
-    fields["print_profiles"] = tuple(fields["print_profiles"])
+    if fields["print_profiles"] is not None:
+        fields["print_profiles"] = tuple(fields["print_profiles"])
     fields["input_color_space"] = resolve_color_space(
         fields["input_color_space"], role="input",
     )
