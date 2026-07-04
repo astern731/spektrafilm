@@ -95,6 +95,17 @@ _LOG_E_MARGIN = 0.1
 _WIRE_DECIMALS = 4
 
 
+def _is_reversal_film(film_profile_name: str) -> bool:
+    """Return True if the film profile is positive/reversal, False if negative.
+
+    Loads the film profile JSON to check info.type. Reversal films (slides) are
+    scanned directly without a printing stage; negative films go through print.
+    """
+    from spektrafilm.profiles import io as profiles_io
+    profile = profiles_io.load_film_profile(film_profile_name)
+    return profile.info.type == "positive"
+
+
 def _round_wire_floor(value: float, decimals: int = _WIRE_DECIMALS) -> float:
     """Round down to ``decimals`` places (toward more-negative)."""
     factor = 10 ** decimals
@@ -357,8 +368,15 @@ class BundleBuilder:
                 f"{spec.output_color_space!r} is not registered as an output color space"
             )
 
-        n_prints = len(spec.print_profiles)
-        print_word = "print" if n_prints == 1 else "prints"
+        # For reversal (positive) films, print_profiles is None; build a
+        # simple film-scan LUT. For negative films, build with printing stages.
+        is_reversal = _is_reversal_film(spec.film_profile)
+        if is_reversal:
+            n_prints = 1  # Reversal films don't have prints
+            print_word = "reversal"
+        else:
+            n_prints = len(spec.print_profiles)
+            print_word = "print" if n_prints == 1 else "prints"
         print(
             f"[bake] {spec.name} "
             f"({spec.topology}, {spec.resolution}^3, {n_prints} {print_word})"
@@ -368,6 +386,11 @@ class BundleBuilder:
                 "[bake] include_combinations=True is a no-op for 1lut topology "
                 "(the single canonical cube already collapses all stages)"
             )
+
+        # Reversal films skip the printing stage regardless of topology setting
+        if is_reversal:
+            print(f"[bake] Reversal film detected; using simplified film-scan topology")
+            return self._build_1lut_reversal(in_entry, out_entry)
 
         if spec.topology == "1lut":
             return self._build_1lut_combined(in_entry, out_entry)
@@ -422,6 +445,59 @@ class BundleBuilder:
             target=spec.target,
             provenance=provenance,
             stocks=StocksMeta(film=spec.film_profile, prints=tuple(spec.print_profiles)),
+            color_spaces={
+                "input": ColorSpaceMeta(
+                    name=spec.input_color_space,
+                    cctf=(in_entry.cctf is not None),
+                ),
+                "output": ColorSpaceMeta(
+                    name=spec.output_color_space,
+                    cctf=(out_entry.cctf is not None),
+                ),
+            },
+            luts=tuple(lut_metas),
+            input_exposure=_input_exposure_meta(spec),
+            params_snapshot=_params_snapshot_for_spec(spec, in_entry, out_entry),
+        )
+        return Bundle(luts=bundle_luts, meta=meta)
+
+    def _build_1lut_reversal(self, in_entry, out_entry) -> Bundle:
+        """Bake one combined reversal film LUT (film exposure→develop→scan).
+
+        Reversal (positive/slide) films are scanned directly without a
+        printing stage. This produces a single LUT per reversal film stock.
+        """
+        spec = self.spec
+        n = spec.resolution
+        provenance = ProvenanceMeta()
+        version_tag = _normalize_version(provenance.spektrafilm_version)
+        wires = BoundaryWires()  # Reversal films measure no intermediate wires
+
+        # For reversal films, use the film stock name as both the path and
+        # print metadata (there's no separate print profile).
+        film_name = spec.film_profile
+        pipeline = self._make_pipeline(spec, in_entry, out_entry, print_stock=None, scan_film=True)
+        path_lut = self._bake_canonical(
+            "combined", pipeline, spec, wires, version_tag, film_name,
+        )
+        bundle_luts = [path_lut]
+        rel_path = path_lut[0]
+        lut_metas = [LutFileMeta(
+            role="combined",
+            path=rel_path,
+            domain="input_rgb",
+            range="output_rgb",
+            print_profile=film_name,  # Film stock used as the print proxy
+        )]
+
+        meta = BundleMeta(
+            schema_version=SCHEMA_VERSION,
+            name=spec.name,
+            topology="1lut",
+            resolution=n,
+            target=spec.target,
+            provenance=provenance,
+            stocks=StocksMeta(film=spec.film_profile, prints=(film_name,)),
             color_spaces={
                 "input": ColorSpaceMeta(
                     name=spec.input_color_space,
@@ -771,19 +847,27 @@ class BundleBuilder:
 
     # ---- shared helpers --------------------------------------------------
 
-    def _make_pipeline(self, spec, in_entry, out_entry, print_stock):
+    def _make_pipeline(self, spec, in_entry, out_entry, print_stock, scan_film=False):
         """Construct a ``SimulationPipeline`` configured for LUT baking.
 
         ``lut_mode`` switches the pipeline into deterministic
         per-pixel mode (all spatial / stochastic effects off);
         ``input_cctf_decoding`` and ``output_cctf_encoding`` stay
         False because the LUT creator owns the transport encoding.
+
+        When ``scan_film=True`` (for reversal films), the pipeline scans
+        the film directly without a printing stage.
         """
         # Deferred runtime imports per the README boundary contract.
         from spektrafilm.runtime.params_builder import digest_params, init_params
         from spektrafilm.runtime.pipeline import SimulationPipeline
 
-        params = init_params(film_profile=spec.film_profile, print_profile=print_stock)
+        # For reversal films (scan_film=True), print_stock is not used
+        # (the film is scanned directly).
+        params = init_params(
+            film_profile=spec.film_profile,
+            print_profile=print_stock if not scan_film else spec.film_profile
+        )
         params.debug.lut_mode = True
         params.io.input_color_space = in_entry.primaries
         params.io.output_color_space = out_entry.primaries
@@ -791,6 +875,7 @@ class BundleBuilder:
         params.io.output_cctf_encoding = False
         params.io.input_gamut_compress = spec.input_gamut_compress
         params.io.output_gamut_compress = spec.output_gamut_compress
+        params.io.scan_film = scan_film
         params = digest_params(params)
         return SimulationPipeline(params)
 

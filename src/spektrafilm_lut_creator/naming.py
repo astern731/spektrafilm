@@ -80,7 +80,7 @@ def topology_tag(topology: str) -> str:
 
 def default_bundle_name(
     film_profile: str,
-    print_profiles: tuple[str, ...],
+    print_profiles: tuple[str, ...] | None,
     topology: str,
     input_color_space: str,
     output_color_space: str,
@@ -91,6 +91,9 @@ def default_bundle_name(
     bundles and ``<N>printpack`` (e.g. ``3printpack``) for multi-print
     bundles — keeps the count discoverable from the filename without
     misleadingly naming the pack after one of its prints.
+
+    For reversal (positive) films, print_profiles is None and the name
+    contains only the film stock (no print segment).
     """
     # Lazy import to avoid a cycle with the registry (color_spaces
     # imports nothing from this package's core layout but its registry
@@ -104,10 +107,11 @@ def default_bundle_name(
     out_tag = _cs_short_tag(output_color_space)
 
     parts = ["spektrafilm", v_tag, film_tag]
-    if len(print_profiles) == 1:
-        parts.append(normalize_stock(print_profiles[0]))
-    else:
-        parts.append(f"{len(print_profiles)}printpack")
+    if print_profiles is not None:
+        if len(print_profiles) == 1:
+            parts.append(normalize_stock(print_profiles[0]))
+        else:
+            parts.append(f"{len(print_profiles)}printpack")
     parts.extend([topo_tag, in_tag, out_tag])
     return "_".join(parts)
 

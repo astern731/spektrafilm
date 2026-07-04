@@ -501,31 +501,59 @@ class TestBundleOutput:
         # 8-bit quantization error is ~1/255 per channel
         np.testing.assert_allclose(loaded.table, lut.table, atol=1.5 / 255.0)
 
-    def test_hald_png_works_with_any_film_type(self, tmp_path):
-        """PNG format works with negative, positive, and other film types.
+    def test_reversal_film_builds_without_print_profiles(self, tmp_path):
+        """Reversal films (positive) build correctly without print profiles.
 
-        The Hald PNG delivery target is format-agnostic and works for any
-        film profile in the registry, regardless of whether it's negative,
-        positive/slide, or cinema film.
+        Reversal films (Kodachrome, Velvia, etc) are scanned directly without
+        a printing stage. They should not require print_profiles to be set.
         """
-        # Test with negative film (typical case)
-        spec_neg = make_bundle_spec(
-            name="portra_png",
-            film_profile="kodak_portra_400",
+        from spektrafilm_lut_creator.builders import BundleBuilder
+
+        spec = make_bundle_spec(
+            name="velvia_reversal",
+            film_profile="fujifilm_velvia_100",  # Positive/slide film
+            print_profiles=None,  # No print stage for reversal films
+            resolution=16,
+        )
+        builder = BundleBuilder(spec)
+        built = builder.build()
+        out_dir = builder.write(built, tmp_path / "reversal_bundle")
+
+        # Should have created exactly one LUT (film only, no prints)
+        assert len(built.luts) == 1
+        rel_path, lut = built.luts[0]
+        cube_path = out_dir / rel_path
+        assert cube_path.exists()
+
+        # Verify the bundle metadata reflects the reversal workflow
+        assert built.meta.stocks.film == "fujifilm_velvia_100"
+        assert built.meta.topology == "1lut"
+
+    def test_hald_png_works_with_reversal_films(self, tmp_path):
+        """Hald PNG export works correctly for reversal films.
+
+        Verifies that reversal films can be exported as PNG without requiring
+        print profiles or printing stage configuration.
+        """
+        spec = make_bundle_spec(
+            name="kodachrome_png",
+            film_profile="kodak_kodachrome_64",  # Reversal film
+            print_profiles=None,
             resolution=16,
             target="hald_clut_png",
         )
-        builder_neg = BundleBuilder(spec_neg)
-        built_neg = builder_neg.build()
-        out_dir_neg = builder_neg.write(built_neg, tmp_path / "negative_bundle")
+        builder = BundleBuilder(spec)
+        built = builder.build()
+        out_dir = builder.write(built, tmp_path / "kodachrome_bundle")
 
-        rel_path_neg, lut_neg = built_neg.luts[0]
-        png_neg = out_dir_neg / Path(rel_path_neg).with_suffix(".png")
-        assert png_neg.exists() and png_neg.suffix == ".png"
+        # PNG file should exist for the reversal film
+        rel_path, lut = built.luts[0]
+        png_path = out_dir / Path(rel_path).with_suffix(".png")
+        assert png_path.exists() and png_path.suffix == ".png"
 
-        # Verify both formats round-trip correctly
-        loaded_neg = get_format("hald_png").read(png_neg)
-        np.testing.assert_allclose(loaded_neg.table, lut_neg.table, atol=1.5 / 255.0)
+        # Verify PNG round-trips correctly
+        loaded = get_format("hald_png").read(png_path)
+        np.testing.assert_allclose(loaded.table, lut.table, atol=1.5 / 255.0)
 
 
 # ---------------------------------------------------------------------------

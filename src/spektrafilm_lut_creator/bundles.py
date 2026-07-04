@@ -35,14 +35,16 @@ class BundleSpec:
     when ``name`` is left as the empty string. Pass an explicit
     ``name`` to override.
 
-    ``print_profiles`` is a tuple of one or more print stocks. For
-    multi-print bundles, the auto-name omits the print segment (the
-    bundle covers all of them — naming after one is misleading).
+    ``print_profiles`` is a tuple of one or more print stocks for negative
+    films. Leave as ``None`` for reversal/slide films (positive films are
+    scanned directly without printing). For multi-print bundles, the auto-name
+    omits the print segment (the bundle covers all of them — naming after one
+    is misleading).
     """
     film_profile: str
-    print_profiles: tuple[str, ...]
     input_color_space: str
     output_color_space: str
+    print_profiles: tuple[str, ...] | None = None
     name: str = ""
     """Bundle name. Auto-computed via
     :mod:`spektrafilm_lut_creator.naming` when empty."""
@@ -213,8 +215,27 @@ class BundleSpec:
                 f"topology must be one of {sorted(_VALID_TOPOLOGIES)}, "
                 f"got {self.topology!r}"
             )
-        if not self.print_profiles:
-            raise ValueError("print_profiles must contain at least one entry")
+        # Determine if this is a reversal (positive) film to validate print_profiles
+        from spektrafilm.profiles import io as profiles_io
+        film_profile = profiles_io.load_film_profile(self.film_profile)
+        is_reversal = film_profile.info.type == "positive"
+
+        if is_reversal:
+            # Reversal films are scanned directly; print_profiles should be None/empty
+            if self.print_profiles:
+                raise ValueError(
+                    f"Reversal (positive) film {self.film_profile!r} should not have "
+                    f"print_profiles (leave as None). Reversal films are scanned directly "
+                    f"without a printing stage."
+                )
+        else:
+            # Negative films require print profiles for the printing stage
+            if not self.print_profiles:
+                raise ValueError(
+                    f"Negative film {self.film_profile!r} requires print_profiles. "
+                    f"Pass one or more print stock names, or use a reversal film to "
+                    f"skip the printing stage."
+                )
         # Auto-compute the canonical bundle name when not explicitly
         # given. Done here (rather than in the builder) so consumers can
         # rely on ``spec.name`` being populated immediately after
